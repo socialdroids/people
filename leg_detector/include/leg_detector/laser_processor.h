@@ -37,9 +37,9 @@
 
 #include <unistd.h>
 #include <math.h>
-#include <sensor_msgs/LaserScan.h>
-#include <sensor_msgs/PointCloud.h>
-#include <geometry_msgs/Point.h>
+#include <sensor_msgs/msg/laser_scan.hpp> 
+#include <sensor_msgs/msg/point_cloud.hpp>
+#include <geometry_msgs/msg/point.hpp>
 
 #include <list>
 #include <set>
@@ -48,7 +48,7 @@
 #include <utility>
 #include <algorithm>
 
-#include <tf/transform_datatypes.h>
+#include <tf2/LinearMath/Quaternion.h>
 
 namespace laser_processor
 {
@@ -62,7 +62,7 @@ public:
   float x;
   float y;
 
-  static Sample* Extract(int ind, const sensor_msgs::LaserScan& scan);
+  static Sample* Extract(int ind, const sensor_msgs::msg::LaserScan& scan);
 
 private:
   Sample() {}
@@ -79,7 +79,6 @@ struct CompareSample
   }
 };
 
-
 //! An ordered set of Samples
 class SampleSet : public std::set<Sample*, CompareSample>
 {
@@ -93,9 +92,9 @@ public:
 
   void clear();
 
-  void appendToCloud(sensor_msgs::PointCloud& cloud, int r = 0, int g = 0, int b = 0);
+  void appendToCloud(sensor_msgs::msg::PointCloud& cloud, int r = 0, int g = 0, int b = 0);
 
-  tf::Point center();
+  tf2::Vector3 center(); 
 };
 
 //! A mask for filtering out Samples based on range
@@ -117,17 +116,15 @@ public:
     filled = false;
   }
 
-  void addScan(sensor_msgs::LaserScan& scan);
+  void addScan(sensor_msgs::msg::LaserScan& scan);  
 
   bool hasSample(Sample* s, float thresh);
 };
 
-
-
 class ScanProcessor
 {
   std::list<SampleSet*> clusters_;
-  sensor_msgs::LaserScan scan_;
+  sensor_msgs::msg::LaserScan scan_;  
 
 public:
   std::list<SampleSet*>& getClusters()
@@ -135,7 +132,7 @@ public:
     return clusters_;
   }
 
-  ScanProcessor(const sensor_msgs::LaserScan& scan, ScanMask& mask_, float mask_threshold = 0.03);
+  ScanProcessor(const sensor_msgs::msg::LaserScan& scan, ScanMask& mask_, float mask_threshold = 0.03);
 
   ~ScanProcessor();
 
@@ -145,4 +142,4 @@ public:
 };
 };  // namespace laser_processor
 
-#endif  // LEG_DETECTOR_LASER_PROCESSOR_H
+#endif 

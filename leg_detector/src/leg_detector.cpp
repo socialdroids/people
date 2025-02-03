@@ -31,22 +31,22 @@
 *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 *  POSSIBILITY OF SUCH DAMAGE.
 *********************************************************************/
-#include <ros/ros.h>
+#include <rclpy/rclpy.h>
 
 #include <leg_detector/LegDetectorConfig.h>
 #include <leg_detector/laser_processor.h>
 #include <leg_detector/calc_leg_features.h>
 
-#include <opencv/cxcore.h>
-#include <opencv/cv.h>
-#include <opencv/ml.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/ml.hpp>
 
-#include <people_msgs/PositionMeasurement.h>
-#include <people_msgs/PositionMeasurementArray.h>
-#include <sensor_msgs/LaserScan.h>
+// #include <people_msgs/PositionMeasurement.msg>
+// #include <people_msgs/PositionMeasurementArray.h>
+// #include <sensor_msgs/LaserScan.h>
 
-#include <tf/transform_listener.h>
-#include <tf/message_filter.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/message_filter.h>
 #include <message_filters/subscriber.h>
 
 #include <people_tracking_filter/tracker_kalman.h>
@@ -91,12 +91,12 @@ public:
 
   std::string id_;
   std::string object_id;
-  ros::Time time_;
-  ros::Time meas_time_;
+  rclcpp::Time time_;
+  rclcpp::Time meas_time_;
 
   double reliability, p;
 
-  Stamped<Point> position_;
+  geometry_msgs::msg::Point position_;
   SavedFeature* other;
   float dist_to_person_;
 
@@ -112,8 +112,8 @@ public:
     id_ = std::string(id);
 
     object_id = "";
-    time_ = loc.stamp_;
-    meas_time_ = loc.stamp_;
+    time_ = rclcpp::Time(loc.stamp_);
+    meas_time_ = rclcpp::Time(loc.stamp_);
     other = NULL;
 
     try
@@ -122,21 +122,26 @@ public:
     }
     catch (...)
     {
-      ROS_WARN("TF exception spot 6.");
+      RCLCPP_WARN(rclcpp::get_logger("rclcpp"), "TF exception spot 6.");
     }
-    StampedTransform pose(Pose(Quaternion(0.0, 0.0, 0.0, 1.0), loc), loc.stamp_, id_, loc.frame_id_);
+    geometry_msgs::msg::TransformStamped pose;
+    pose.transform.translation.x = loc.x;
+    pose.transform.translation.y = loc.y;
+    pose.transform.translation.z = loc.z;
+    pose.header.stamp = loc.stamp_;
+    pose.header.frame_id = loc.frame_id_;
     tfl_.setTransform(pose);
 
-    StatePosVel prior_sigma(Vector3(0.1, 0.1, 0.1), Vector3(0.0000001, 0.0000001, 0.0000001));
-    filter_.initialize(loc, prior_sigma, time_.toSec());
+    BFL::StatePosVel prior_sigma(Vector3(0.1, 0.1, 0.1), Vector3(0.0000001, 0.0000001, 0.0000001));
+    filter_.initialize(loc, prior_sigma, time_.seconds());
 
-    StatePosVel est;
+    BFL::StatePosVel est;
     filter_.getEstimate(est);
 
     updatePosition();
   }
 
-  void propagate(ros::Time time)
+  void propagate(rclcpp::Time time)
   {
     time_ = time;
 
@@ -147,14 +152,19 @@ public:
 
   void update(Stamped<Point> loc, double probability)
   {
-    StampedTransform pose(Pose(Quaternion(0.0, 0.0, 0.0, 1.0), loc), loc.stamp_, id_, loc.frame_id_);
+    geometry_msgs::msg::TransformStamped pose;
+    pose.transform.translation.x = loc.x;
+    pose.transform.translation.y = loc.y;
+    pose.transform.translation.z = loc.z;
+    pose.header.stamp = loc.stamp_;
+    pose.header.frame_id = loc.frame_id_;
     tfl_.setTransform(pose);
 
     meas_time_ = loc.stamp_;
     time_ = meas_time_;
 
-    SymmetricMatrix cov(3);
-    cov = 0.0;
+    Eigen::MatrixXd cov(3, 3);
+    cov.setZero();
     cov(1, 1) = 0.0025;
     cov(2, 2) = 0.0025;
     cov(3, 3) = 0.0025;
@@ -190,16 +200,16 @@ public:
 private:
   void updatePosition()
   {
-    StatePosVel est;
+    BFL::StatePosVel est;
     filter_.getEstimate(est);
 
-    position_[0] = est.pos_[0];
-    position_[1] = est.pos_[1];
-    position_[2] = est.pos_[2];
+    position_.x = est.pos_[0];
+    position_.y = est.pos_[1];
+    position_.z = est.pos_[2];
     position_.stamp_ = time_;
-    position_.frame_id_ = fixed_frame;
+    position_.frame_id = fixed_frame;
+
     double nreliability = fmin(1.0, fmax(0.1, est.vel_.length() / 0.5));
-    // reliability = fmax(reliability, nreliability);
   }
 };
 

@@ -35,8 +35,8 @@
 #ifndef LEG_DETECTOR_CALC_LEG_FEATURES_H
 #define LEG_DETECTOR_CALC_LEG_FEATURES_H
 
-#include <leg_detector/laser_processor.h>
-#include <sensor_msgs/LaserScan.h>
+#include <leg_detector/laser_processor.hpp> 
+#include <sensor_msgs/msg/laser_scan.hpp>
 #include <vector>
 
 // TODO(dlu): Should remove scan dependency from here.
