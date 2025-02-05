@@ -40,7 +40,7 @@
 
 using namespace std;
 using namespace BFL;
-using namespace tf;
+using namespace tf2;
 
 
 static const unsigned int NUM_SYS_VECTOR_COND_ARGS  = 1;
@@ -48,7 +48,7 @@ static const unsigned int DIM_SYS_VECTOR            = 3;
 
 
 // Constructor
-SysPdfVector::SysPdfVector(const Vector3& sigma)
+SysPdfVector::SysPdfVector(const tf2::Vector3& sigma)
   : ConditionalPdf<Vector3, Vector3>(DIM_SYS_VECTOR, NUM_SYS_VECTOR_COND_ARGS),
     noise_(Vector3(0, 0, 0), sigma)
 {}

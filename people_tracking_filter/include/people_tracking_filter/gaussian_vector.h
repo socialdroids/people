@@ -33,29 +33,29 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
-
+/* Maluco que passou para ros2: Miguelito*/
 #ifndef GAUSSIAN_VECTOR_H
 #define GAUSSIAN_VECTOR_H
 
 #include <bfl/pdf/pdf.h>
-#include <tf/tf.h>
-
+#include <tf2/LinearMath/Vector3.h>
+#include <iostream>
 
 
 namespace BFL
 {
 /// Class representing gaussian vector
-class GaussianVector: public Pdf<tf::Vector3>
+class GaussianVector: public Pdf<tf2::Vector3>
 {
 private:
-  tf::Vector3 mu_, sigma_;
+  tf2::Vector3 mu_, sigma_;
   mutable double sqrt_;
-  mutable tf::Vector3 sigma_sq_;
+  mutable tf2::Vector3 sigma_sq_;
   mutable bool sigma_changed_;
 
 public:
   /// Constructor
-  GaussianVector(const tf::Vector3& mu, const tf::Vector3& sigma);
+  GaussianVector(const tf2::Vector3& mu, const tf2::Vector3& sigma);
 
   /// Destructor
   virtual ~GaussianVector();
@@ -63,18 +63,19 @@ public:
   /// output stream for GaussianVector
   friend std::ostream& operator<< (std::ostream& os, const GaussianVector& g);
 
-  void sigmaSet(const tf::Vector3& sigma);
+  void sigmaSet(const tf2::Vector3& sigma);
 
   // Redefinition of pure virtuals
-  virtual Probability ProbabilityGet(const tf::Vector3& input) const;
-  bool SampleFrom(vector<Sample<tf::Vector3> >& list_samples, const int num_samples, int method = DEFAULT, void * args = NULL) const;
-  virtual bool SampleFrom(Sample<tf::Vector3>& one_sample, int method = DEFAULT, void * args = NULL) const;
+  virtual Probability ProbabilityGet(const tf2::Vector3& input) const;
+  bool SampleFrom(std::vector<Sample<tf2::Vector3>>& list_samples, const int num_samples, int method = DEFAULT, void* args = nullptr) const;
+  virtual bool SampleFrom(Sample<tf2::Vector3>& one_sample, int method = DEFAULT, void* args = nullptr) const;
 
-  virtual tf::Vector3 ExpectedValueGet() const;
+  virtual tf2::Vector3 ExpectedValueGet() const;
   virtual MatrixWrapper::SymmetricMatrix CovarianceGet() const;
 
   virtual GaussianVector* Clone() const;
 };
 
 } // end namespace
+
 #endif

@@ -33,10 +33,10 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
+/* Maluco que passou para ros2: Miguelito*/
 
 #ifndef SYSMODEL_VECTOR_H
 #define SYSMODEL_VECTOR_H
-
 
 #include "gaussian_vector.h"
 #include <bfl/model/systemmodel.h>
@@ -44,15 +44,19 @@
 #include <bfl/wrappers/matrix/matrix_wrapper.h>
 #include <string>
 
+// Incluindo dependências ROS2
+#include "rclcpp/rclcpp.hpp"
+#include "geometry_msgs/msg/vector3.hpp"
+
 namespace BFL
 {
 
 class SysPdfVector
-  : public ConditionalPdf<tf::Vector3, tf::Vector3>
+  : public ConditionalPdf<tf2::Vector3, tf2::Vector3>
 {
 public:
   /// Constructor
-  SysPdfVector(const tf::Vector3& sigma);
+  SysPdfVector(const tf2::Vector3& sigma);
 
   /// Destructor
   virtual ~SysPdfVector();
@@ -64,30 +68,22 @@ public:
   };
 
   // Redefining pure virtual methods
-  virtual bool SampleFrom(BFL::Sample<tf::Vector3>& one_sample, int method, void *args) const;
-  virtual tf::Vector3 ExpectedValueGet() const; // not applicable
-  virtual Probability ProbabilityGet(const tf::Vector3& state) const; // not applicable
-  virtual MatrixWrapper::SymmetricMatrix  CovarianceGet() const; // Not applicable
-
+  virtual bool SampleFrom(BFL::Sample<tf2::Vector3>& one_sample, int method, void *args) const;
+  virtual tf2::Vector3 ExpectedValueGet() const; // not applicable
+  virtual Probability ProbabilityGet(const tf2::Vector3& state) const; // not applicable
+  virtual MatrixWrapper::SymmetricMatrix CovarianceGet() const; // Not applicable
 
 private:
   GaussianVector noise_;
   double dt_;
-
-}; // class
-
-
-
-
-
-
+}; // class SysPdfVector
 
 class SysModelVector
-  : public SystemModel<tf::Vector3>
+  : public SystemModel<tf2::Vector3>
 {
 public:
-  SysModelVector(const tf::Vector3& sigma)
-    : SystemModel<tf::Vector3>(new SysPdfVector(sigma))
+  SysModelVector(const tf2::Vector3& sigma)
+    : SystemModel<tf2::Vector3>(new SysPdfVector(sigma))
   {};
 
   /// destructor
@@ -102,11 +98,8 @@ public:
     ((SysPdfVector*)SystemPdfGet())->SetDt(dt);
   };
 
-}; // class
+}; // class SysModelVector
 
-
-
-} //namespace
-
+} // namespace BFL
 
 #endif

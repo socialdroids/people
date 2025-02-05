@@ -39,13 +39,21 @@
 #include "people_tracking_filter/tracker_kalman.h"
 #include "people_tracking_filter/state_pos_vel.h"
 #include "people_tracking_filter/rgb.h"
-#include <people_msgs/PositionMeasurement.h>
-
+#include <people_msgs/msg/position_measurement.hpp>
+#include <tf2/LinearMath/Vector3.h>
+#include <tf2_ros/transform_listener.h>
+#include "tf2/transform_datatypes.h"
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <sensor_msgs/msg/point_cloud.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <sensor_msgs/msg/channel_float32.hpp>
+#include <boost/thread/mutex.hpp> 
+#include <Eigen/Dense>
 
 using namespace std;
-using namespace tf;
+using namespace tf2;
 using namespace BFL;
-using namespace message_filters;
 
 static const double       sequencer_delay            = 0.8; //TODO: this is probably too big, it was 0.8
 static const unsigned int sequencer_internal_buffer  = 100;
@@ -55,156 +63,157 @@ static const double       tracker_init_dist          = 4.0;
 
 namespace estimation
 {
-// constructor
-PeopleTrackingNode::PeopleTrackingNode(ros::NodeHandle nh)
-  : nh_(nh),
-    robot_state_(),
-    tracker_counter_(0)
+PeopleTrackingNode::PeopleTrackingNode(std::shared_ptr<rclcpp::Node> node)
+: rclcpp::Node(node->get_name()), robot_state_(), tracker_counter_(0)
 {
-  // initialize
-  meas_cloud_.points = vector<geometry_msgs::Point32>(1);
+  // Initialize
+  meas_cloud_.points.push_back(geometry_msgs::msg::Point32());
   meas_cloud_.points[0].x = 0;
   meas_cloud_.points[0].y = 0;
   meas_cloud_.points[0].z = 0;
 
-  // get parameters
-  ros::NodeHandle local_nh("~");
-  local_nh.param("fixed_frame", fixed_frame_, string("default"));
-  local_nh.param("freq", freq_, 1.0);
-  local_nh.param("start_distance_min", start_distance_min_, 0.0);
-  local_nh.param("reliability_threshold", reliability_threshold_, 1.0);
-  local_nh.param("sys_sigma_pos_x", sys_sigma_.pos_[0], 0.0);
-  local_nh.param("sys_sigma_pos_y", sys_sigma_.pos_[1], 0.0);
-  local_nh.param("sys_sigma_pos_z", sys_sigma_.pos_[2], 0.0);
-  local_nh.param("sys_sigma_vel_x", sys_sigma_.vel_[0], 0.0);
-  local_nh.param("sys_sigma_vel_y", sys_sigma_.vel_[1], 0.0);
-  local_nh.param("sys_sigma_vel_z", sys_sigma_.vel_[2], 0.0);
-  local_nh.param("follow_one_person", follow_one_person_, false);
+  // Get parameters
+  node_->declare_parameter("fixed_frame", std::string("default"));
+  node_->declare_parameter("freq", 1.0);
+  node_->declare_parameter("start_distance_min", 0.0);
+  node_->declare_parameter("reliability_threshold", 1.0);
+  node_->declare_parameter("sys_sigma_pos_x", 0.0);
+  node_->declare_parameter("sys_sigma_pos_y", 0.0);
+  node_->declare_parameter("sys_sigma_pos_z", 0.0);
+  node_->declare_parameter("sys_sigma_vel_x", 0.0);
+  node_->declare_parameter("sys_sigma_vel_y", 0.0);
+  node_->declare_parameter("sys_sigma_vel_z", 0.0);
+  node_->declare_parameter("follow_one_person", false);
 
-  // advertise filter output
-  people_filter_pub_ = nh_.advertise<people_msgs::PositionMeasurement>("people_tracker_filter", 10);
+  // Advertise filter output
+  people_filter_pub_ = node_->create_publisher<people_msgs::msg::PositionMeasurement>("people_tracker_filter", 10);
 
-  // advertise visualization
-  people_filter_vis_pub_ = nh_.advertise<sensor_msgs::PointCloud>("people_tracker_filter_visualization", 10);
-  people_tracker_vis_pub_ = nh_.advertise<sensor_msgs::PointCloud>("people_tracker_measurements_visualization", 10);
+  // Advertise visualization
+  people_filter_vis_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud>("people_tracker_filter_visualization", 10);
+  people_tracker_vis_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud>("people_tracker_measurements_visualization", 10);
 
-  // register message sequencer
-  people_meas_sub_ = nh_.subscribe("people_tracker_measurements", 1, &PeopleTrackingNode::callbackRcv, this);
-
+  // Register message sequencer
+  people_meas_sub_ = node_->create_subscription<people_msgs::msg::PositionMeasurement>(
+    "people_tracker_measurements", 1,
+    [this](const people_msgs::msg::PositionMeasurement::SharedPtr message) {
+        this->callbackRcv(message);
+    });
 }
+
 
 
 // destructor
 PeopleTrackingNode::~PeopleTrackingNode()
 {
-  // delete sequencer
-  delete message_sequencer_;
-
-  // delete all trackers
-  for (list<Tracker*>::iterator it = trackers_.begin(); it != trackers_.end(); it++)
-    delete *it;
-};
-
+  // Delete trackers
+  for (auto& tracker : trackers_)
+    delete tracker;
+}
 
 
 
 // callback for messages
-void PeopleTrackingNode::callbackRcv(const people_msgs::PositionMeasurement::ConstPtr& message)
+void PeopleTrackingNode::callbackRcv(const people_msgs::msg::PositionMeasurement::SharedPtr& message)
 {
-  ROS_DEBUG("Tracking node got a people position measurement (%f,%f,%f)",
-            message->pos.x, message->pos.y, message->pos.z);
-  // get measurement in fixed frame
-  Stamped<tf::Vector3> meas_rel, meas;
-  meas_rel.setData(
-    tf::Vector3(message->pos.x, message->pos.y, message->pos.z));
-  meas_rel.stamp_ = message->header.stamp;
-  meas_rel.frame_id_ = message->header.frame_id;
-  robot_state_.transformPoint(fixed_frame_, meas_rel, meas);
+// Get measurement in fixed frame
+  geometry_msgs::msg::Point meas_rel;
+  meas_rel.x = message->pos.x;
+  meas_rel.y = message->pos.y;
+  meas_rel.z = message->pos.z;
 
-  // get measurement covariance
+  rclcpp::Time stamp = message->header.stamp;
+  std::string frame_id = message->header.frame_id;
+
+  geometry_msgs::msg::Point meas;
+  try {
+    
+      geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(fixed_frame_, frame_id, tf2::TimePointZero);
+      tf2::doTransform(meas_rel, meas, transform);
+  } catch (const tf2::TransformException &ex) {
+      RCLCPP_ERROR(this->get_logger(), "Transform failed: %s", ex.what());
+  }
+
+  // Get measurement covariance
   SymmetricMatrix cov(3);
   for (unsigned int i = 0; i < 3; i++)
     for (unsigned int j = 0; j < 3; j++)
       cov(i + 1, j + 1) = message->covariance[3 * i + j];
 
   // ----- LOCKED ------
-  boost::mutex::scoped_lock lock(filter_mutex_);
+  std::lock_guard<boost::mutex> lock(filter_mutex_);
 
-  // update tracker if matching tracker found
-  for (list<Tracker*>::iterator it = trackers_.begin(); it != trackers_.end(); it++)
-    if ((*it)->getName() == message->object_id)
+  // Update tracker if matching tracker found
+  for (auto& tracker : trackers_)
+    if (tracker->getName() == message->object_id)
     {
-      (*it)->updatePrediction(message->header.stamp.toSec());
-      (*it)->updateCorrection(meas, cov);
+      tracker->updatePrediction(message->header.stamp.sec);
+      tracker->updateCorrection(tf2::Vector3(meas.x, meas.y, meas.z), cov);
     }
-  // check if reliable message with no name should be a new tracker
+
+  // Create new tracker if needed
   if (message->object_id == "" && message->reliability > reliability_threshold_)
   {
     double closest_tracker_dist = start_distance_min_;
     StatePosVel est;
-    for (list<Tracker*>::iterator it = trackers_.begin(); it != trackers_.end(); it++)
+    for (auto& tracker : trackers_)
     {
-      (*it)->getEstimate(est);
-      double dst = sqrt(pow(est.pos_[0] - meas[0], 2) + pow(est.pos_[1] - meas[1], 2));
+      tracker->getEstimate(est);
+      double dst = sqrt(pow(est.pos_[0] - meas.x, 2) + pow(est.pos_[1] - meas.y, 2));
       if (dst < closest_tracker_dist)
         closest_tracker_dist = dst;
     }
-    // initialize a new tracker
-    if (follow_one_person_)
-      cout << "Following one person" << endl;
-    if (message->initialization == 1 && ((!follow_one_person_ && (closest_tracker_dist >= start_distance_min_)) || (follow_one_person_ && trackers_.empty())))
+
+    if (message->initialization == 1 && (closest_tracker_dist >= start_distance_min_))
     {
-      //if (closest_tracker_dist >= start_distance_min_ || message->initialization == 1){
-      //if (message->initialization == 1 && trackers_.empty()){
-      ROS_INFO("Passed crazy conditional.");
-      tf::Point pt;
-      tf::pointMsgToTF(message->pos, pt);
-      tf::Stamped<tf::Point> loc(pt, message->header.stamp, message->header.frame_id);
-      robot_state_.transformPoint("base_link", loc, loc);
-      float cur_dist;
-      if ((cur_dist = pow(loc[0], 2.0) + pow(loc[1], 2.0)) < tracker_init_dist)
-      {
+      geometry_msgs::msg::Point pt;
+      pt.x = message->pos.x;
+      pt.y = message->pos.y;
+      pt.z = message->pos.z;
 
-        cout << "starting new tracker" << endl;
-        stringstream tracker_name;
-        StatePosVel prior_sigma(tf::Vector3(sqrt(cov(1, 1)), sqrt(cov(
-                                              2, 2)), sqrt(cov(3, 3))), tf::Vector3(0.0000001, 0.0000001, 0.0000001));
-        tracker_name << "person " << tracker_counter_++;
-        Tracker* new_tracker = new TrackerKalman(tracker_name.str(),
-            sys_sigma_);
-        //Tracker* new_tracker = new TrackerParticle(tracker_name.str(), num_particles_tracker, sys_sigma_);
-        new_tracker->initialize(meas, prior_sigma,
-                                message->header.stamp.toSec());
-        trackers_.push_back(new_tracker);
-        ROS_INFO("Initialized new tracker %s", tracker_name.str().c_str());
+      geometry_msgs::msg::PoseStamped loc;
+      loc.header.stamp = message->header.stamp;
+      loc.header.frame_id = message->header.frame_id;
+      loc.pose.position = pt;
+
+      try {
+          geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform("base_link", loc.header.frame_id, tf2::TimePointZero);
+          tf2::doTransform(loc, loc, transform);
+      } catch (const tf2::TransformException &ex) {
+          RCLCPP_ERROR(this->get_logger(), "Transform failed: %s", ex.what());
       }
-      else
-        ROS_INFO("Found a person, but he/she is not close enough to start following.  Person is %f away, and must be less than %f away.", cur_dist , tracker_init_dist);
+
+      float cur_dist;
+      if ((cur_dist = pow(loc.pose.position.x, 2.0) + pow(loc.pose.position.y, 2.0)) < tracker_init_dist)
+      {
+        stringstream tracker_name;
+        StatePosVel prior_sigma(tf2::Vector3(sqrt(cov(1, 1)), sqrt(cov(2, 2)), sqrt(cov(3, 3))),
+                                tf2::Vector3(0.0000001, 0.0000001, 0.0000001));
+        tracker_name << "person " << tracker_counter_++;
+        Tracker* new_tracker = new TrackerKalman(tracker_name.str(), sys_sigma_);
+        tf2::Vector3 meas_vec(meas.x, meas.y, meas.z); 
+        new_tracker->initialize(meas_vec, prior_sigma, message->header.stamp.sec);
+        trackers_.push_back(new_tracker);
+      }
     }
-    else
-      ROS_INFO("Failed crazy conditional.");
   }
-  lock.unlock();
-  // ------ LOCKED ------
 
+  // Visualize measurement
+  meas_cloud_.points[0].x = meas.x;  
+  meas_cloud_.points[0].y = meas.y;  
+  meas_cloud_.points[0].z = meas.z;  
 
-  // visualize measurement
-  meas_cloud_.points[0].x = meas[0];
-  meas_cloud_.points[0].y = meas[1];
-  meas_cloud_.points[0].z = meas[2];
-  meas_cloud_.header.frame_id = meas.frame_id_;
-  people_tracker_vis_pub_.publish(meas_cloud_);
+  meas_cloud_.header.frame_id = message->header.frame_id;
+  people_tracker_vis_pub_->publish(meas_cloud_);
 }
 
 
+// // callback for dropped messages
+// void PeopleTrackingNode::callbackDrop(const people_msgs::msg::PositionMeasurement::ConstPtr& message)
+// {
+//   ROS_INFO("DROPPED PACKAGE for %s from %s with delay %f !!!!!!!!!!!",
+//            message->object_id.c_str(), message->name.c_str(), (ros::Time::now() - message->header.stamp).toSec());
 
-// callback for dropped messages
-void PeopleTrackingNode::callbackDrop(const people_msgs::PositionMeasurement::ConstPtr& message)
-{
-  ROS_INFO("DROPPED PACKAGE for %s from %s with delay %f !!!!!!!!!!!",
-           message->object_id.c_str(), message->name.c_str(), (ros::Time::now() - message->header.stamp).toSec());
-
-}
+// }
 
 
 
@@ -212,72 +221,67 @@ void PeopleTrackingNode::callbackDrop(const people_msgs::PositionMeasurement::Co
 // filter loop
 void PeopleTrackingNode::spin()
 {
-  ROS_INFO("People tracking manager started.");
+  RCLCPP_INFO(node_->get_logger(), "People tracking manager started.");
 
-  while (ros::ok())
+  while (rclcpp::ok())
   {
-    // ------ LOCKED ------
-    boost::mutex::scoped_lock lock(filter_mutex_);
+    std::lock_guard<boost::mutex> lock(filter_mutex_);
 
-    // visualization variables
-    vector<geometry_msgs::Point32> filter_visualize(trackers_.size());
+    // Visualization variables
+    vector<geometry_msgs::msg::Point> filter_visualize(trackers_.size());
     vector<float> weights(trackers_.size());
-    sensor_msgs::ChannelFloat32 channel;
+    sensor_msgs::msg::ChannelFloat32 channel;
 
-    // loop over trackers
     unsigned int i = 0;
-    list<Tracker*>::iterator it = trackers_.begin();
-    while (it != trackers_.end())
+    for (auto& tracker : trackers_)
     {
-      // update prediction up to delayed time
-      (*it)->updatePrediction(ros::Time::now().toSec() - sequencer_delay);
+      tracker->updatePrediction(rclcpp::Clock().now().seconds() - sequencer_delay);
 
-      // publish filter result
-      people_msgs::PositionMeasurement est_pos;
-      (*it)->getEstimate(est_pos);
+      // Publish filter result
+      people_msgs::msg::PositionMeasurement est_pos;
+      tracker->getEstimate(est_pos);
       est_pos.header.frame_id = fixed_frame_;
+      people_filter_pub_->publish(est_pos);
 
-      ROS_DEBUG("Publishing people tracker filter.");
-      people_filter_pub_.publish(est_pos);
-
-      // visualize filter result
+      // Visualize filter result
       filter_visualize[i].x = est_pos.pos.x;
       filter_visualize[i].y = est_pos.pos.y;
       filter_visualize[i].z = est_pos.pos.z;
-      weights[i] = *(float*) & (rgb[min(998, 999 - max(1, (int)trunc((*it)->getQuality() * 999.0)))]);
+      weights[i] = *(float*)&(rgb[min(998, 999 - max(1, (int)trunc(tracker->getQuality() * 999.0)))]);
 
-      // remove trackers that have zero quality
-      ROS_INFO("Quality of tracker %s = %f", (*it)->getName().c_str(), (*it)->getQuality());
-      if ((*it)->getQuality() <= 0)
+      // Remove trackers that have zero quality
+      if (tracker->getQuality() <= 0)
       {
-        ROS_INFO("Removing tracker %s", (*it)->getName().c_str());
-        delete *it;
-        trackers_.erase(it++);
+        trackers_.remove(tracker);
+        delete tracker;
       }
-      else it++;
       i++;
     }
-    lock.unlock();
-    // ------ LOCKED ------
 
-
-    // visualize all trackers
+    // Visualize all trackers
     channel.name = "rgb";
     channel.values = weights;
-    sensor_msgs::PointCloud  people_cloud;
+    sensor_msgs::msg::PointCloud people_cloud;
     people_cloud.channels.push_back(channel);
     people_cloud.header.frame_id = fixed_frame_;
-    people_cloud.points  = filter_visualize;
-    people_filter_vis_pub_.publish(people_cloud);
 
-    // sleep
-    usleep(1e6 / freq_);
+    std::vector<geometry_msgs::msg::Point32> point_cloud_points;
+    point_cloud_points.reserve(filter_visualize.size());
+    for (const auto& point : filter_visualize) {
+      geometry_msgs::msg::Point32 p32;
+      p32.x = point.x;
+      p32.y = point.y;
+      p32.z = point.z;
+      point_cloud_points.push_back(p32);
+    }
 
-    ros::spinOnce();
+    people_cloud.points = point_cloud_points;
+    people_filter_vis_pub_->publish(people_cloud);
+
+    // Sleep
+    rclcpp::sleep_for(std::chrono::milliseconds(static_cast<int>(1000 / freq_)));
   }
-};
-
-
+}
 }; // namespace
 
 
@@ -288,20 +292,16 @@ void PeopleTrackingNode::spin()
 // ----------
 // -- MAIN --
 // ----------
-using namespace estimation;
 int main(int argc, char **argv)
 {
-  // Initialize ROS
-  ros::init(argc, argv, "people_tracker");
-  ros::NodeHandle(nh);
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("people_tracker");
 
-  // create tracker node
-  PeopleTrackingNode my_tracking_node(nh);
+    estimation::PeopleTrackingNode my_tracking_node(node);
 
-  // wait for filter to finish
-  my_tracking_node.spin();
+    my_tracking_node.spin();
 
-  // Clean up
+    rclcpp::shutdown();
 
-  return 0;
+    return 0;
 }

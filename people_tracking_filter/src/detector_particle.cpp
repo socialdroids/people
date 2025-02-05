@@ -36,12 +36,12 @@
 
 #include "people_tracking_filter/detector_particle.h"
 #include "people_tracking_filter/uniform_vector.h"
+#include <tf2/LinearMath/Vector3.h>
 
 using namespace MatrixWrapper;
 using namespace BFL;
-using namespace tf;
+using namespace tf2;
 using namespace std;
-using namespace ros;
 using namespace geometry_msgs;
 
 
@@ -53,8 +53,8 @@ namespace estimation
 DetectorParticle::DetectorParticle(unsigned int num_particles):
   prior_(num_particles),
   filter_(NULL),
-  sys_model_(tf::Vector3(0.1, 0.1, 0.1)),
-  meas_model_(tf::Vector3(0.1, 0.1, 0.1)),
+  sys_model_(tf2::Vector3(0.1, 0.1, 0.1)),
+  meas_model_(tf2::Vector3(0.1, 0.1, 0.1)),
   detector_initialized_(false),
   num_particles_(num_particles)
 {}
@@ -69,16 +69,17 @@ DetectorParticle::~DetectorParticle()
 
 
 // initialize prior density of filter
-void DetectorParticle::initialize(const tf::Vector3& mu, const tf::Vector3& size, const double time)
+void DetectorParticle::initialize(const tf2::Vector3& mu, const tf2::Vector3& size, const double time)
 {
   cout << "Initializing detector with " << num_particles_ << " particles, with uniform size "
        << size << " around " << mu << endl;
 
   UniformVector uniform_vector(mu, size);
-  vector<Sample<tf::Vector3> > prior_samples(num_particles_);
-  uniform_vector.SampleFrom(prior_samples, num_particles_, CHOLESKY, NULL);
-  prior_.ListOfSamplesSet(prior_samples);
-  filter_ = new BootstrapFilter<tf::Vector3, tf::Vector3>(&prior_, &prior_, 0, num_particles_ / 4.0);
+  // vector<Sample<tf2::Vector3> > prior_samples(num_particles_);
+  // uniform_vector.SampleFrom(prior_samples, num_particles_, CHOLESKY, NULL);
+  // prior_.ListOfSamplesSet(prior_samples);
+  // filter_ = new BootstrapFilter<tf2::Vector3, tf2::Vector3>(&prior_, &prior_, 0, num_particles_ / 4.0);
+
 
   // detector initialized
   detector_initialized_ = true;
@@ -105,7 +106,7 @@ bool DetectorParticle::updatePrediction(const double dt)
 
 
 // update filter correction
-bool DetectorParticle::updateCorrection(const tf::Vector3&  meas, const MatrixWrapper::SymmetricMatrix& cov, const double time)
+bool DetectorParticle::updateCorrection(const tf2::Vector3&  meas, const MatrixWrapper::SymmetricMatrix& cov, const double time)
 {
   assert(cov.columns() == 3);
 
@@ -124,28 +125,28 @@ bool DetectorParticle::updateCorrection(const tf::Vector3&  meas, const MatrixWr
 
 
 // get evenly spaced particle cloud
-void DetectorParticle::getParticleCloud(const tf::Vector3& step, double threshold, sensor_msgs::PointCloud& cloud) const
+void DetectorParticle::getParticleCloud(const tf2::Vector3& step, double threshold, sensor_msgs::msg::PointCloud2& cloud) const
 {
   ((MCPdfVector*)(filter_->PostGet()))->getParticleCloud(step, threshold, cloud);
 }
 
 
 // get most recent filter posterior
-void DetectorParticle::getEstimate(tf::Vector3& est) const
+void DetectorParticle::getEstimate(tf2::Vector3& est) const
 {
   est = ((MCPdfVector*)(filter_->PostGet()))->ExpectedValueGet();
 }
 
 
-void DetectorParticle::getEstimate(people_msgs::PositionMeasurement& est) const
+void DetectorParticle::getEstimate(people_msgs::msg::PositionMeasurement& est) const
 {
-  tf::Vector3 tmp = filter_->PostGet()->ExpectedValueGet();
+  tf2::Vector3 tmp = filter_->PostGet()->ExpectedValueGet();
 
   est.pos.x = tmp[0];
   est.pos.y = tmp[1];
   est.pos.z = tmp[2];
 
-  est.header.stamp.fromSec(filter_time_);
+  // est.header.stamp.fromSec(filter_time_);
   est.header.frame_id = "base_link";
 }
 
@@ -154,7 +155,7 @@ void DetectorParticle::getEstimate(people_msgs::PositionMeasurement& est) const
 
 
 /// Get histogram from certain area
-Matrix DetectorParticle::getHistogram(const tf::Vector3& min, const tf::Vector3& max, const tf::Vector3& step) const
+Matrix DetectorParticle::getHistogram(const tf2::Vector3& min, const tf2::Vector3& max, const tf2::Vector3& step) const
 {
   return ((MCPdfVector*)(filter_->PostGet()))->getHistogram(min, max, step);
 }

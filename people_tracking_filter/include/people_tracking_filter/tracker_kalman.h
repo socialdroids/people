@@ -33,6 +33,7 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
+/* Maluco que passou para ros2: Miguelito*/
 
 #ifndef __TRACKER_KALMAN__
 #define __TRACKER_KALMAN__
@@ -45,14 +46,17 @@
 #include <bfl/model/linearanalyticmeasurementmodel_gaussianuncertainty.h>
 #include <bfl/pdf/linearanalyticconditionalgaussian.h>
 
-
 #include "state_pos_vel.h"
 
-// TF
-#include <tf/tf.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 // log files
 #include <fstream>
+
+// ROS2
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
+#include "people_msgs/msg/position_measurement.hpp"
 
 namespace estimation
 {
@@ -89,13 +93,12 @@ public:
 
   /// update tracker
   virtual bool updatePrediction(const double time);
-  virtual bool updateCorrection(const tf::Vector3& meas,
+  virtual bool updateCorrection(const tf2::Vector3& meas,
                                 const MatrixWrapper::SymmetricMatrix& cov);
 
   /// get filter posterior
   virtual void getEstimate(BFL::StatePosVel& est) const;
-  virtual void getEstimate(people_msgs::PositionMeasurement& est) const;
-
+  virtual void getEstimate(people_msgs::msg::PositionMeasurement& est) const;
 
 private:
   // pdf / model / filter
@@ -113,7 +116,6 @@ private:
   // vars
   bool tracker_initialized_;
   double init_time_, filter_time_, quality_;
-
 
 }; // class
 

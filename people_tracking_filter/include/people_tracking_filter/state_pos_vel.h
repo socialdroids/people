@@ -33,29 +33,31 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
-
+/* Maluco que passou para ros2: Miguelito*/
 
 #ifndef STATE_POS_VEL_H
 #define STATE_POS_VEL_H
 
-#include <tf/tf.h>
+#include <tf2/LinearMath/Vector3.h>
+#include <iostream>
 
 namespace BFL
 {
-/// Class representing state with pos and vel
+/// Classe representando o estado com posição e velocidade
 class StatePosVel
 {
 public:
-  tf::Vector3 pos_, vel_;
+  tf2::Vector3 pos_, vel_;
 
-  /// Constructor
-  StatePosVel(const tf::Vector3& pos = tf::Vector3(0, 0, 0),
-              const tf::Vector3& vel = tf::Vector3(0, 0, 0)):  pos_(pos), vel_(vel) {};
+  /// Construtor
+  StatePosVel(const tf2::Vector3& pos = tf2::Vector3(0, 0, 0),
+              const tf2::Vector3& vel = tf2::Vector3(0, 0, 0))
+    : pos_(pos), vel_(vel) {}
 
-  /// Destructor
-  ~StatePosVel() {};
+  /// Destruidor
+  ~StatePosVel() {}
 
-  /// operator +=
+  /// operador +=
   StatePosVel& operator += (const StatePosVel& s)
   {
     this->pos_ += s.pos_;
@@ -63,27 +65,22 @@ public:
     return *this;
   }
 
-  /// operator +
+  /// operador +
   StatePosVel operator + (const StatePosVel& s)
   {
     StatePosVel res;
-
     res.pos_ = this->pos_ + s.pos_;
     res.vel_ = this->vel_ + s.vel_;
     return res;
   }
 
-  /// output stream for StatePosVel
+  /// fluxo de saída para StatePosVel
   friend std::ostream& operator<< (std::ostream& os, const StatePosVel& s)
   {
-    os << "(" << s.pos_[0] << ", " << s.pos_[1] << ", "  << s.pos_[2] << ")--("
-       << "(" << s.vel_[0] << ", " << s.vel_[1] << ", "  << s.vel_[2] << ") ";
+    os << "(" << s.pos_[0] << ", " << s.pos_[1] << ", " << s.pos_[2] << ")--("
+       << "(" << s.vel_[0] << ", " << s.vel_[1] << ", " << s.vel_[2] << ") ";
     return os;
   };
-
-
-
-
 };
-} // end namespace
+} // fim do namespace
 #endif

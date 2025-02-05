@@ -39,15 +39,16 @@
 #include <cmath>
 #include <cassert>
 
-using namespace tf;
+using namespace tf2;
 
 namespace BFL
 {
-UniformVector::UniformVector(const Vector3& mu, const Vector3& size)
-  : Pdf<Vector3> (1),
-    mu_(mu),
-    size_(size)
+UniformVector::UniformVector(const tf2::Vector3& mu, const tf2::Vector3& size)
+  : Pdf<tf2::Vector3>(1)  
 {
+  mu_ = mu;  
+  size_ = size;
+
   for (unsigned int i = 0; i < 3; i++)
     assert(size_[i] > 0);
 

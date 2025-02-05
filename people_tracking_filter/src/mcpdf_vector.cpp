@@ -38,25 +38,30 @@
 #include "people_tracking_filter/state_pos_vel.h"
 #include <assert.h>
 #include <vector>
-#include <std_msgs/Float64.h>
+#include "std_msgs/msg/float64.hpp"
 #include "people_tracking_filter/rgb.h"
-
+#include <geometry_msgs/msg/point.hpp>
+#include "sensor_msgs/msg/channel_float32.hpp"
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <tf2/LinearMath/Vector3.h>
+#include <tf2_ros/transform_listener.h>
 
 using namespace MatrixWrapper;
 using namespace BFL;
-using namespace tf;
+using namespace tf2;
 
 static const unsigned int NUM_CONDARG   = 1;
 
 
 MCPdfVector::MCPdfVector(unsigned int num_samples)
-  : MCPdf<Vector3> (num_samples, NUM_CONDARG)
+  : MCPdf<tf2::Vector3> (num_samples, NUM_CONDARG)
 {}
 
 MCPdfVector::~MCPdfVector() {}
 
 
-WeightedSample<Vector3>
+WeightedSample<tf2::Vector3>
 MCPdfVector::SampleGet(unsigned int particle) const
 {
   assert((int)particle >= 0 && particle < _listOfSamples.size());
@@ -78,57 +83,81 @@ Vector3 MCPdfVector::ExpectedValueGet() const
   return Vector3(pos);
 }
 
-
-/// Get evenly distributed particle cloud
-void MCPdfVector::getParticleCloud(const Vector3& step, double threshold, sensor_msgs::PointCloud& cloud) const
+void MCPdfVector::getParticleCloud(const tf2::Vector3& step, double threshold, sensor_msgs::msg::PointCloud2& cloud) const
 {
   unsigned int num_samples = _listOfSamples.size();
   assert(num_samples > 0);
   Vector3 m = _listOfSamples[0].ValueGet();
   Vector3 M = _listOfSamples[0].ValueGet();
 
-  // calculate min and max
-  for (unsigned int s = 0; s < num_samples; s++)
-  {
+  for (unsigned int s = 0; s < num_samples; s++) {
     Vector3 v = _listOfSamples[s].ValueGet();
-    for (unsigned int i = 0; i < 3; i++)
-    {
+    for (unsigned int i = 0; i < 3; i++) {
       if (v[i] < m[i]) m[i] = v[i];
       if (v[i] > M[i]) M[i] = v[i];
     }
   }
 
-  // get point cloud from histogram
   Matrix hist = getHistogram(m, M, step);
   unsigned int row = hist.rows();
   unsigned int col = hist.columns();
   unsigned int total = 0;
   unsigned int t = 0;
+  
   for (unsigned int r = 1; r <= row; r++)
     for (unsigned int c = 1; c <= col; c++)
       if (hist(r, c) > threshold) total++;
-  cout << "size total " << total << endl;
+  cout << "tamanho total " << total << endl;
 
-  vector<geometry_msgs::Point32> points(total);
+  vector<geometry_msgs::msg::Point> points(total);
   vector<float> weights(total);
-  sensor_msgs::ChannelFloat32 channel;
+  sensor_msgs::msg::ChannelFloat32 channel;
+  
   for (unsigned int r = 1; r <= row; r++)
     for (unsigned int c = 1; c <= col; c++)
-      if (hist(r, c) > threshold)
-      {
+      if (hist(r, c) > threshold) {
         for (unsigned int i = 0; i < 3; i++)
           points[t].x = m[0] + (step[0] * r);
         points[t].y = m[1] + (step[1] * c);
         points[t].z = m[2];
+        
         weights[t] = rgb[999 - (int)trunc(max(0.0, min(999.0, hist(r, c) * 2 * total * total)))];
         t++;
       }
-  cout << "points size " << points.size() << endl;
+  cout << "tamanho pontos " << points.size() << endl;
+
   cloud.header.frame_id = "base_link";
-  cloud.points  = points;
+
+  cloud.height = 1;  
+  cloud.width = total; 
+  cloud.is_dense = false;  
+
+  sensor_msgs::msg::PointField field;
+  field.name = "x";
+  field.offset = 0;
+  field.datatype = sensor_msgs::msg::PointField::FLOAT32;
+  field.count = 1;
+  cloud.fields.push_back(field);
+
+  field.name = "y";
+  field.offset = 4;
+  cloud.fields.push_back(field);
+
+  field.name = "z";
+  field.offset = 8;
+  cloud.fields.push_back(field);
+
+  cloud.data.resize(total * 12); 
+
+  for (unsigned int i = 0; i < total; i++) {
+    memcpy(&cloud.data[i * 12], &points[i].x, sizeof(float));    // x
+    memcpy(&cloud.data[i * 12 + 4], &points[i].y, sizeof(float));  // y
+    memcpy(&cloud.data[i * 12 + 8], &points[i].z, sizeof(float));  // z
+  }
+
   channel.name = "rgb";
   channel.values = weights;
-  cloud.channels.push_back(channel);
+  // cloud.channels.push_back(channel);
 }
 
 
@@ -153,6 +182,7 @@ MatrixWrapper::Matrix MCPdfVector::getHistogram(const Vector3& m, const Vector3&
 
   return hist;
 }
+
 
 
 

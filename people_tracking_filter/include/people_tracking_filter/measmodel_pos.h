@@ -33,27 +33,31 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
+/* Maluco que passou para ros2: Miguelito*/
+
 
 #ifndef MEASMODEL_POS_H
 #define MEASMODEL_POS_H
 
 #include "state_pos_vel.h"
-#include "tf/tf.h"
+#include "geometry_msgs/msg/vector3.hpp"
 #include "gaussian_vector.h"
 #include <bfl/model/measurementmodel.h>
 #include <bfl/pdf/conditionalpdf.h>
 #include <bfl/wrappers/matrix/matrix_wrapper.h>
+#include <bfl/wrappers/matrix/matrix_BOOST.h>
 #include <string>
+
 
 namespace BFL
 {
 
 class MeasPdfPos
-  : public BFL::ConditionalPdf<tf::Vector3, StatePosVel>
+  : public BFL::ConditionalPdf<tf2::Vector3, StatePosVel>
 {
 public:
   /// Constructor
-  MeasPdfPos(const tf::Vector3& sigma);
+  MeasPdfPos(const tf2::Vector3& sigma);
 
   /// Destructor
   virtual ~MeasPdfPos();
@@ -62,11 +66,10 @@ public:
   void CovarianceSet(const  MatrixWrapper::SymmetricMatrix& cov);
 
   // Redefining pure virtual methods
-  virtual BFL::Probability ProbabilityGet(const tf::Vector3& input) const;
-  virtual bool SampleFrom(BFL::Sample<tf::Vector3>& one_sample, int method, void *args) const;   // Not applicable
-  virtual tf::Vector3 ExpectedValueGet() const; // Not applicable
+  virtual BFL::Probability ProbabilityGet(const tf2::Vector3& input) const;
+  virtual bool SampleFrom(BFL::Sample<tf2::Vector3>& one_sample, int method, void *args) const;   // Not applicable
+  // virtual tf2::Vector3 ExpectedValueGet() const; // Not applicable
   virtual MatrixWrapper::SymmetricMatrix  CovarianceGet() const; // Not applicable
-
 
 private:
   GaussianVector meas_noise_;
@@ -74,18 +77,14 @@ private:
 }; // class
 
 
-
-
-
-
 class MeasModelPos
-  : public BFL::MeasurementModel<tf::Vector3, StatePosVel>
+  : public BFL::MeasurementModel<tf2::Vector3, StatePosVel>
 {
 public:
   /// constructor
-  MeasModelPos(const tf::Vector3& sigma)
-    : BFL::MeasurementModel<tf::Vector3, StatePosVel>(new MeasPdfPos(sigma))
-  {};
+  MeasModelPos(const tf2::Vector3& sigma)
+    : BFL::MeasurementModel<tf2::Vector3, StatePosVel>(new MeasPdfPos(sigma))
+  {}
 
   /// destructor
   ~MeasModelPos()
@@ -95,7 +94,6 @@ public:
 
 }; // class
 
-} //namespace
-
+} // namespace BFL
 
 #endif

@@ -39,19 +39,20 @@
 #include <cmath>
 #include <cassert>
 
-using namespace tf;
+using namespace tf2;
 
 namespace BFL
 {
-GaussianVector::GaussianVector(const Vector3& mu, const Vector3& sigma)
-  : Pdf<Vector3> (1),
-    mu_(mu),
+GaussianVector::GaussianVector(const tf2::Vector3& mu, const tf2::Vector3& sigma)
+  : Pdf<tf2::Vector3>(1),
+    mu_(mu),  
     sigma_(sigma),
     sigma_changed_(true)
 {
   for (unsigned int i = 0; i < 3; i++)
-    assert(sigma[i] > 0);
+    assert(sigma_[i] > 0);  
 }
+
 
 
 GaussianVector::~GaussianVector() {}

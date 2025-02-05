@@ -33,7 +33,7 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
-
+/* Maluco que passou para ros2: Miguelito*/
 
 #ifndef GAUSSIAN_POS_VEL_H
 #define GAUSSIAN_POS_VEL_H
@@ -73,8 +73,8 @@ public:
 
   // Redefinition of pure virtuals
   virtual Probability ProbabilityGet(const StatePosVel& input) const;
-  bool SampleFrom(vector<Sample<StatePosVel> >& list_samples, const int num_samples, int method = DEFAULT, void * args = NULL) const;
-  virtual bool SampleFrom(Sample<StatePosVel>& one_sample, int method = DEFAULT, void * args = NULL) const;
+  bool SampleFrom(std::vector<Sample<StatePosVel> >& list_samples, const int num_samples, int method = DEFAULT, void * args = nullptr) const;
+  virtual bool SampleFrom(Sample<StatePosVel>& one_sample, int method = DEFAULT, void * args = nullptr) const;
 
   virtual StatePosVel ExpectedValueGet() const;
   virtual MatrixWrapper::SymmetricMatrix CovarianceGet() const;
@@ -82,4 +82,5 @@ public:
 };
 
 } // end namespace
+
 #endif

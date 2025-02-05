@@ -37,13 +37,17 @@
 #include "people_tracking_filter/mcpdf_pos_vel.h"
 #include <assert.h>
 #include <vector>
-#include <std_msgs/Float64.h>
+#include "std_msgs/msg/float64.hpp"
 #include "people_tracking_filter/rgb.h"
-
+#include "geometry_msgs/msg/point32.hpp"  
+#include "sensor_msgs/msg/point_cloud2.hpp"
+#include "sensor_msgs/msg/channel_float32.hpp"
+#include "sensor_msgs/msg/point_field.hpp"
+#include <cstring>
 
 using namespace MatrixWrapper;
 using namespace BFL;
-using namespace tf;
+using namespace tf2;
 
 static const unsigned int NUM_CONDARG   = 1;
 
@@ -65,8 +69,8 @@ MCPdfPosVel::SampleGet(unsigned int particle) const
 
 StatePosVel MCPdfPosVel::ExpectedValueGet() const
 {
-  tf::Vector3 pos(0, 0, 0);
-  tf::Vector3 vel(0, 0, 0);
+  tf2::Vector3 pos(0, 0, 0);
+  tf2::Vector3 vel(0, 0, 0);
   double current_weight;
   std::vector<WeightedSample<StatePosVel> >::const_iterator it_los;
   for (it_los = _listOfSamples.begin() ; it_los != _listOfSamples.end() ; it_los++)
@@ -80,14 +84,14 @@ StatePosVel MCPdfPosVel::ExpectedValueGet() const
 
 
 /// Get evenly distributed particle cloud
-void MCPdfPosVel::getParticleCloud(const tf::Vector3& step, double threshold, sensor_msgs::PointCloud& cloud) const
+void MCPdfPosVel::getParticleCloud(const tf2::Vector3& step, double threshold, sensor_msgs::msg::PointCloud2& cloud) const
 {
   unsigned int num_samples = _listOfSamples.size();
   assert(num_samples > 0);
   Vector3 m = _listOfSamples[0].ValueGet().pos_;
   Vector3 M = _listOfSamples[0].ValueGet().pos_;
 
-  // calculate min and max
+  // Calculate min and max
   for (unsigned int s = 0; s < num_samples; s++)
   {
     Vector3 v = _listOfSamples[s].ValueGet().pos_;
@@ -98,7 +102,7 @@ void MCPdfPosVel::getParticleCloud(const tf::Vector3& step, double threshold, se
     }
   }
 
-  // get point cloud from histogram
+  // Get point cloud from histogram
   Matrix hist = getHistogramPos(m, M, step);
   unsigned int row = hist.rows();
   unsigned int col = hist.columns();
@@ -108,26 +112,58 @@ void MCPdfPosVel::getParticleCloud(const tf::Vector3& step, double threshold, se
     for (unsigned int c = 1; c <= col; c++)
       if (hist(r, c) > threshold) total++;
 
-  vector<geometry_msgs::Point32> points(total);
-  vector<float> weights(total);
-  sensor_msgs::ChannelFloat32 channel;
+  // Create points and weights
+  std::vector<float> points; // To store the point data (x, y, z)
+  std::vector<float> weights(total);
+
+  // Create the PointField for the RGB channel
+  sensor_msgs::msg::PointField rgb_field;
+  rgb_field.name = "rgb";
+  rgb_field.offset = 0;
+  rgb_field.datatype = sensor_msgs::msg::PointField::FLOAT32;
+  rgb_field.count = 1; // The size of the RGB data per point
+
+  // Fill in the points and weights
   for (unsigned int r = 1; r <= row; r++)
     for (unsigned int c = 1; c <= col; c++)
       if (hist(r, c) > threshold)
       {
-        for (unsigned int i = 0; i < 3; i++)
-          points[t].x = m[0] + (step[0] * r);
-        points[t].y = m[1] + (step[1] * c);
-        points[t].z = m[2];
+        // Add point (x, y, z)
+        points.push_back(m[0] + (step[0] * r));
+        points.push_back(m[1] + (step[1] * c));
+        points.push_back(m[2]);
+
+        // Add weight (RGB value)
         weights[t] = rgb[999 - (int)trunc(max(0.0, min(999.0, hist(r, c) * 2 * total * total)))];
         t++;
       }
+
+  // Set up the PointCloud2 message
   cloud.header.frame_id = "odom_combined";
-  cloud.points  = points;
+  cloud.height = 1;  // Typically for point clouds with a single row
+  cloud.width = total; // Number of points
+  cloud.fields.push_back(rgb_field); // Add the RGB channel field
+  cloud.is_bigendian = false;
+  cloud.point_step = sizeof(float) * 3 + sizeof(float); // 3 floats for XYZ and 1 float for RGB
+  cloud.row_step = cloud.point_step * total;
+  cloud.data.resize(cloud.row_step * cloud.height);
+
+  // Fill the cloud data with the points and weights
+  uint8_t* data_ptr = cloud.data.data();
+  for (size_t i = 0; i < points.size(); i += 3)
+  {
+    memcpy(data_ptr, &points[i], sizeof(float) * 3); // XYZ
+    data_ptr += sizeof(float) * 3;
+    memcpy(data_ptr, &weights[i / 3], sizeof(float)); // RGB
+    data_ptr += sizeof(float);
+  }
+
+  // Add the RGB channel data
+  sensor_msgs::msg::ChannelFloat32 channel;
   channel.name = "rgb";
-  channel.values = weights;
-  cloud.channels.push_back(channel);
+  channel.values = weights; // Set the weight (RGB) values to the channel
 }
+
 
 
 /// Get histogram from pos

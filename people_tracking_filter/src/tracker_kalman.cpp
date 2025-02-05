@@ -38,9 +38,8 @@
 
 using namespace MatrixWrapper;
 using namespace BFL;
-using namespace tf;
+using namespace tf2;
 using namespace std;
-using namespace ros;
 
 
 const static double damping_velocity = 0.9;
@@ -163,7 +162,7 @@ bool TrackerKalman::updatePrediction(const double time)
 
 
 // update filter correction
-bool TrackerKalman::updateCorrection(const tf::Vector3&  meas, const MatrixWrapper::SymmetricMatrix& cov)
+bool TrackerKalman::updateCorrection(const tf2::Vector3&  meas, const MatrixWrapper::SymmetricMatrix& cov)
 {
   assert(cov.columns() == 3);
 
@@ -195,7 +194,7 @@ void TrackerKalman::getEstimate(StatePosVel& est) const
 };
 
 
-void TrackerKalman::getEstimate(people_msgs::PositionMeasurement& est) const
+void TrackerKalman::getEstimate(people_msgs::msg::PositionMeasurement& est) const
 {
   ColumnVector tmp = filter_->PostGet()->ExpectedValueGet();
 
@@ -203,7 +202,7 @@ void TrackerKalman::getEstimate(people_msgs::PositionMeasurement& est) const
   est.pos.y = tmp(2);
   est.pos.z = tmp(3);
 
-  est.header.stamp.fromSec(filter_time_);
+  // est.header.stamp.fromSec(filter_time_);
   est.object_id = getName();
 }
 

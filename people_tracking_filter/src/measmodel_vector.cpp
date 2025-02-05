@@ -38,15 +38,15 @@
 
 using namespace std;
 using namespace BFL;
-using namespace tf;
+using namespace tf2;
 
 static const unsigned int NUM_MEASMODEL_VECTOR_COND_ARGS  = 1;
 static const unsigned int DIM_MEASMODEL_VECTOR            = 3;
 
 
 // Constructor
-MeasPdfVector::MeasPdfVector(const Vector3& sigma)
-  : ConditionalPdf<Vector3, Vector3>(DIM_MEASMODEL_VECTOR, NUM_MEASMODEL_VECTOR_COND_ARGS),
+MeasPdfVector::MeasPdfVector(const tf2::Vector3& sigma)
+  : ConditionalPdf<tf2::Vector3, tf2::Vector3>(DIM_MEASMODEL_VECTOR, NUM_MEASMODEL_VECTOR_COND_ARGS),
     meas_noise_(Vector3(0, 0, 0), sigma)
 {}
 

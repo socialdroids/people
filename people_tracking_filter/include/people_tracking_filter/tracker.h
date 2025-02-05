@@ -33,63 +33,67 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
-
+/* Maluco que passou para ros2: Miguelito*/
 #ifndef __TRACKER__
 #define __TRACKER__
 
 #include "state_pos_vel.h"
-#include <people_msgs/PositionMeasurement.h>
+#include <rclcpp/rclcpp.hpp> // ROS 2 base library
+#include <tf2/LinearMath/Vector3.h>
 #include <bfl/wrappers/matrix/matrix_wrapper.h>
 #include <string>
-
-
+#include "people_msgs/msg/position_measurement.hpp"
 namespace estimation
 {
 
 class Tracker
 {
 public:
-  /// constructor
-  Tracker(const std::string& name): name_(name) {};
+  /// Construtor
+  Tracker(const std::string& name) : name_(name) {}
 
-  /// destructor
-  virtual ~Tracker() {};
+  /// Destruidor
+  virtual ~Tracker() {}
 
-  /// return the name of the tracker
+  /// Retorna o nome do tracker
   const std::string& getName() const
   {
     return name_;
-  };
+  }
 
-  /// initialize tracker
+  /// Inicializa o tracker
   virtual void initialize(const BFL::StatePosVel& mu, const BFL::StatePosVel& sigma, const double time) = 0;
 
-  /// return if tracker was initialized
+  /// Retorna se o tracker foi inicializado
   virtual bool isInitialized() const = 0;
 
-  /// return measure for tracker quality: 0=bad 1=good
+  /// Retorna uma medida de qualidade do tracker: 0=ruim 1=boa
   virtual double getQuality() const = 0;
 
-  /// return the lifetime of the tracker
+  /// Retorna a vida útil do tracker
   virtual double getLifetime() const = 0;
 
-  /// return the time of the tracker
+  /// Retorna o tempo do tracker
   virtual double getTime() const = 0;
 
-  /// update tracker
+  /// Atualiza o tracker com a previsão
   virtual bool updatePrediction(const double time) = 0;
-  virtual bool updateCorrection(const tf::Vector3& meas,
+
+  /// Atualiza o tracker com a correção
+  virtual bool updateCorrection(const tf2::Vector3& meas,
                                 const MatrixWrapper::SymmetricMatrix& cov) = 0;
 
-  /// get filter posterior
+  /// Obtém a estimativa do filtro
   virtual void getEstimate(BFL::StatePosVel& est) const = 0;
-  virtual void getEstimate(people_msgs::PositionMeasurement& est) const = 0;
+
+  /// Obtém a estimativa em formato de medida de posição
+  virtual void getEstimate(people_msgs::msg::PositionMeasurement& est) const = 0;
 
 private:
   std::string name_;
 
-}; // class
+}; // classe Tracker
 
-}; // namespace
+}; // namespace estimation
 
 #endif

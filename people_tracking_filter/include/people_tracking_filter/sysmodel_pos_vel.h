@@ -33,10 +33,10 @@
 *********************************************************************/
 
 /* Author: Wim Meeussen */
+/* Maluco que passou para ros2: Miguelito*/
 
 #ifndef SYSMODEL_POS_VEL_H
 #define SYSMODEL_POS_VEL_H
-
 
 #include "state_pos_vel.h"
 #include "gaussian_pos_vel.h"
@@ -52,36 +52,29 @@ class SysPdfPosVel
   : public ConditionalPdf<StatePosVel, StatePosVel>
 {
 public:
-  /// Constructor
+  /// Construtor
   SysPdfPosVel(const StatePosVel& sigma);
 
-  /// Destructor
+  /// Destruidor
   virtual ~SysPdfPosVel();
 
-  // set time
+  // Define o tempo
   void SetDt(double dt)
   {
     dt_ = dt;
   };
 
-  // Redefining pure virtual methods
+  // Redefinindo métodos virtuais puros
   virtual bool SampleFrom(BFL::Sample<StatePosVel>& one_sample, int method, void *args) const;
-  virtual StatePosVel ExpectedValueGet() const; // not applicable
-  virtual Probability ProbabilityGet(const StatePosVel& state) const; // not applicable
-  virtual MatrixWrapper::SymmetricMatrix  CovarianceGet() const; // Not applicable
-
+  virtual StatePosVel ExpectedValueGet() const; // não aplicável
+  virtual Probability ProbabilityGet(const StatePosVel& state) const; // não aplicável
+  virtual MatrixWrapper::SymmetricMatrix CovarianceGet() const; // Não aplicável
 
 private:
   GaussianPosVel noise_;
   double dt_;
 
-}; // class
-
-
-
-
-
-
+}; // classe SysPdfPosVel
 
 class SysModelPosVel
   : public SystemModel<StatePosVel>
@@ -89,25 +82,22 @@ class SysModelPosVel
 public:
   SysModelPosVel(const StatePosVel& sigma)
     : SystemModel<StatePosVel>(new SysPdfPosVel(sigma))
-  {};
+  {}
 
-  /// destructor
+  /// Destruidor
   ~SysModelPosVel()
   {
     delete SystemPdfGet();
   };
 
-  // set time
+  // Define o tempo
   void SetDt(double dt)
   {
     ((SysPdfPosVel*)SystemPdfGet())->SetDt(dt);
   };
 
-}; // class
+}; // classe SysModelPosVel
 
-
-
-} //namespace
-
+} // namespace BFL
 
 #endif

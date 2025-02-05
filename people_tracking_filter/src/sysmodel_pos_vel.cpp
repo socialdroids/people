@@ -40,7 +40,7 @@
 
 using namespace std;
 using namespace BFL;
-using namespace tf;
+using namespace tf2;
 
 
 static const unsigned int NUM_SYS_POS_VEL_COND_ARGS = 1;
@@ -50,7 +50,7 @@ static const unsigned int DIM_SYS_POS_VEL           = 6;
 // Constructor
 SysPdfPosVel::SysPdfPosVel(const StatePosVel& sigma)
   : ConditionalPdf<StatePosVel, StatePosVel>(DIM_SYS_POS_VEL, NUM_SYS_POS_VEL_COND_ARGS),
-    noise_(StatePosVel(Vector3(0, 0, 0), Vector3(0, 0, 0)), sigma)
+    noise_(StatePosVel(tf2::Vector3(0, 0, 0), tf2::Vector3(0, 0, 0)), sigma)
 {}
 
 
