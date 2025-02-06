@@ -19,6 +19,11 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(visualization_msgs REQUIRED)
+# find_package(dynamic_reconfigure REQUIRED)
+
+# generate_dynamic_reconfigure_options(
+#   cfg/LegDetector.cfg
+# )
 
 # Find external dependencies using PkgConfig
 find_package(PkgConfig REQUIRED)
@@ -53,6 +58,7 @@ set(ament_dependencies
   std_msgs
   tf2
   visualization_msgs
+  OpenCV
 )
 
 ament_target_dependencies(leg_detector

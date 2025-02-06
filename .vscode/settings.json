@@ -73,6 +73,14 @@
         "core": "cpp",
         "__locale": "cpp",
         "any": "cpp",
-        "__node_handle": "cpp"
+        "__node_handle": "cpp",
+        "*.ipp": "cpp",
+        "__bit_reference": "cpp",
+        "__hash_table": "cpp",
+        "__split_buffer": "cpp",
+        "__tree": "cpp",
+        "filesystem": "cpp",
+        "queue": "cpp",
+        "stack": "cpp"
     }
 }

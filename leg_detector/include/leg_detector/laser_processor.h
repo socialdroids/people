@@ -35,8 +35,11 @@
 #ifndef LEG_DETECTOR_LASER_PROCESSOR_H
 #define LEG_DETECTOR_LASER_PROCESSOR_H
 
+#include "rclcpp/rclcpp.hpp"
+
 #include <unistd.h>
 #include <math.h>
+
 #include <sensor_msgs/msg/laser_scan.hpp> 
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -73,7 +76,7 @@ struct CompareSample
 {
   CompareSample() {}
 
-  inline bool operator()(const Sample* a, const Sample* b)
+  inline bool operator()(const Sample* a, const Sample* b) const
   {
     return (a->index <  b->index);
   }
