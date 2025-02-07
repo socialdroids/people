@@ -1,16 +1,23 @@
 import launch
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.substitutions import FindPackageShare
+from ament_index_python.packages import get_package_share_directory
+import os
 
 def generate_launch_description():
+    leg_detector_config = os.path.join(
+        get_package_share_directory('leg_detector'),
+        'config',
+        'trained_leg_detector.yaml'
+    )
+
+    print(leg_detector_config)
     return LaunchDescription([
-        # Iniciando o nó leg_detector
         Node(
             package='leg_detector',
             executable='leg_detector',
             name='leg_detector',
-            parameters=[{'config': FindPackageShare('leg_detector').find('leg_detector') + '/config/trained_leg_detector.yaml'}],
+            parameters=[{'config_file': leg_detector_config}],  # Forma alternativa de carregar parâmetros
             remappings=[('scan', 'base_scan')],
             output='screen'
         )

@@ -23,6 +23,7 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tf2</depend>
+  <depend>tf2_ros</depend>
   <depend>visualization_msgs</depend>
   <exec_depend>laser_filters</exec_depend>
   <exec_depend>map_laser</exec_depend>

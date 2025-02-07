@@ -46,9 +46,13 @@
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include <geometry_msgs/msg/point_stamped.hpp>
 
+#include <tf2/LinearMath/Transform.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_broadcaster.h"
+#include <tf2_ros/create_timer_interface.h>
+#include <tf2_ros/create_timer_ros.h>
 
 #include "message_filters/subscriber.h"
 #include "message_filters/time_synchronizer.h"
@@ -73,7 +77,7 @@ static double max_second_leg_age_s     = 2.0;
 static double max_track_jump_m         = 1.0;
 static double max_meas_jump_m          = 0.75;  // 1.0
 static double leg_pair_separation_m    = 1.0;
-static std::string fixed_frame         = "odom_combined";
+static std::string fixed_frame         = "base_scan_front";
 
 static double kal_p = 4, kal_q = .002, kal_r = 10;
 static bool use_filter = true;
@@ -261,35 +265,20 @@ char** g_argv;
 
 
 
-
-// actual legdetector node
 class LegDetector : public rclcpp::Node
 {
 public:
-
-  tf2_ros::Buffer tfl_buffer_;
-  tf2_ros::TransformListener tfl_;
-
+  // Agora, o tf2_ros::Buffer e TransformListener são ponteiros
   laser_processor::ScanMask mask_;
-
   int mask_count_;
-
-  // cv::ml::RTrees forest;
   cv::Ptr<cv::ml::RTrees> forest = cv::ml::RTrees::create();
-
   float connected_thresh_;
-
   int feat_count_;
-
   char save_[100];
-
   std::list<SavedFeature*> saved_features_;
   std::mutex saved_mutex_;
-
   int feature_id_;
-
-  bool use_seeds_;
-  bool publish_legs_, publish_people_, publish_leg_markers_, publish_people_markers_;
+  bool use_seeds_, publish_legs_, publish_people_, publish_leg_markers_, publish_people_markers_;
   int next_p_id_;
   double leg_reliability_limit_;
   int min_points_per_group;
@@ -298,58 +287,82 @@ public:
   rclcpp::Publisher<people_msgs::msg::PositionMeasurementArray>::SharedPtr leg_measurements_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr markers_pub_;
 
-  // dynamic_reconfigure::Server<leg_detector::LegDetectorConfig> server_;
-
-  message_filters::Subscriber<people_msgs::msg::PositionMeasurement> people_sub_;
-  message_filters::Subscriber<sensor_msgs::msg::LaserScan> laser_sub_;
-
+  // message_filters::Subscriber<people_msgs::msg::PositionMeasurement>::SharedPtr  people_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_sub_;
   std::shared_ptr<message_filters::TimeSynchronizer<people_msgs::msg::PositionMeasurement, sensor_msgs::msg::LaserScan>> time_sync_;
-  
 
-  explicit LegDetector(rclcpp::Node::SharedPtr node) :
+  explicit LegDetector() :
     Node("leg_detector"),
     mask_count_(0),
+    connected_thresh_(0.06),
     feat_count_(0),
+    feature_id_(0),
+    use_seeds_(false),
+    publish_legs_(true),
+    publish_people_(true),
+    publish_leg_markers_(true),
+    publish_people_markers_(true),
     next_p_id_(0),
-    tfl_buffer_(this->get_clock()),
-    tfl_(tfl_buffer_)
+    leg_reliability_limit_(0.7),
+    min_points_per_group(0)
   {
+    RCLCPP_INFO(this->get_logger(), "Tamo rodando");
+
+    RCLCPP_INFO(this->get_logger(), "Loaded forest with %d features: %s", g_argc, g_argv[5]);
     if (g_argc > 1)
     {
       forest = cv::ml::RTrees::create();
-      cv::String feature_file = cv::String(g_argv[1]);
+      std::string feature_file_path = "/home/socialdroids/people/install/leg_detector/share/leg_detector/config/trained_leg_detector.yaml";
+      cv::String feature_file = cv::String(feature_file_path);
       forest = cv::ml::StatModel::load<cv::ml::RTrees>(feature_file);
       feat_count_ = forest->getVarCount();
-      printf("Loaded forest with %d features: %s\n", feat_count_, g_argv[1]);
+      RCLCPP_INFO(this->get_logger(), "Loaded forest with %d features: %s", feat_count_);
     }
     else
     {
-      printf("Please provide a trained random forests classifier as an input.\n");
+      RCLCPP_ERROR(this->get_logger(), "Please provide a trained random forests classifier as an input.");
       rclcpp::shutdown();
+      return;
     }
 
     get_parameter_or("use_seeds", use_seeds_, false);
+    RCLCPP_INFO(this->get_logger(), "1");
 
-    // advertise topics
-    people_measurements_pub_ = create_publisher<people_msgs::msg::PositionMeasurementArray>("people_tracker_measurements", 10);
-    leg_measurements_pub_ = create_publisher<people_msgs::msg::PositionMeasurementArray>("leg_tracker_measurements", 10);
-    markers_pub_ = create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 20);
-    people_sub_.subscribe(this, "people_tracker_filter");
-    laser_sub_.subscribe(this, "scan");
+    // Criar os publishers depois que o nó está pronto
+    people_measurements_pub_ = this->create_publisher<people_msgs::msg::PositionMeasurementArray>(
+        "people_tracker_measurements", 10);
+    leg_measurements_pub_ = this->create_publisher<people_msgs::msg::PositionMeasurementArray>(
+        "leg_tracker_measurements", 10);
+    markers_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(
+        "visualization_marker", 20);
+    RCLCPP_INFO(this->get_logger(), "2");
 
-    if (use_seeds_)
-    {
-      time_sync_ = std::make_shared<message_filters::TimeSynchronizer<people_msgs::msg::PositionMeasurement, sensor_msgs::msg::LaserScan>>(
-          people_sub_, laser_sub_, 10);
-      // time_sync_->registerCallback(std::bind(&LegDetector::syncCallback, this, std::placeholders::_1, std::placeholders::_2));  
-    }
+    // // Inicializar os subscribers
+    // people_sub_ = this->create_subscription<people_msgs::msg::PositionMeasurement>(
+    //     "people_tracker_filter", 10, std::bind(&LegDetector::peopleCallback, this, std::placeholders::_1));
+    laser_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+        "base_scan_front_filtered", 10,
+        std::bind(&LegDetector::laserCallback, this, std::placeholders::_1));
 
-    // dynamic_reconfigure::Server<leg_detector::LegDetectorConfig>::CallbackType f;
-    // f = boost::bind(&LegDetector::configure, this, _1, _2);
-    // server_.setCallback(f);
+    // Criar tf2 Buffer e Listener depois da inicialização do nó
+    tfl_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    tfl_ = std::make_unique<tf2_ros::TransformListener>(*tfl_buffer_);
+    auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
+                                                        this->get_node_base_interface(),
+                                                        this->get_node_timers_interface());
+    tfl_buffer_->setCreateTimerInterface(timer_interface);
+    RCLCPP_INFO(this->get_logger(), "TF2 Buffer e Listener inicializados");
 
-    // feature_id_ = 0;
+    // if (use_seeds_)
+    // {
+    //   time_sync_ = std::make_shared<message_filters::TimeSynchronizer<people_msgs::msg::PositionMeasurement, sensor_msgs::msg::LaserScan>>(
+    //       people_sub_, laser_sub_, 10);
+    // }
+
+    RCLCPP_INFO(this->get_logger(), "3");
   }
+  std::unique_ptr<tf2_ros::Buffer> tfl_buffer_;
+  std::unique_ptr<tf2_ros::TransformListener> tfl_;
 
 
   ~LegDetector()
@@ -726,13 +739,14 @@ public:
 
 void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
 {
+    RCLCPP_INFO(this->get_logger(), "4");
     laser_processor::ScanProcessor processor(*scan, mask_);
-
+    
     processor.splitConnected(connected_thresh_);
     processor.removeLessThan(5);
-
+    RCLCPP_INFO(this->get_logger(), "4.1");
     cv::Mat tmp_mat = cv::Mat(1, feat_count_, CV_32FC1);
-
+    RCLCPP_INFO(this->get_logger(), "5");
     // if no measurement matches to a tracker in the last <no_observation_timeout> seconds: erase tracker
     rclcpp::Time purge = rclcpp::Time(scan->header.stamp) + rclcpp::Duration::from_seconds(-no_observation_timeout_s);
 
@@ -751,7 +765,9 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
     }
 
     // System update of trackers, and copy updated ones in propagate list
+    RCLCPP_INFO(this->get_logger(), "6");
     std::list<SavedFeature*> propagated;
+    RCLCPP_INFO(this->get_logger(), "6.1");
     for (auto& sf_iter : saved_features_)
     {
         sf_iter->propagate(scan->header.stamp);
@@ -760,6 +776,7 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
 
     // Detection step: build up the set of "candidate" clusters
     std::multiset<MatchedFeature> matches;
+    RCLCPP_INFO(this->get_logger(), "7");
     for (auto& cluster : processor.getClusters()) 
     {
         std::vector<float> f = calcLegFeatures(cluster, *scan);
@@ -768,7 +785,7 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
                            forest->predict(tmp_mat, cv::noArray(), cv::ml::RTrees::PREDICT_SUM) /
                            forest->getRoots().size();
 
-
+        RCLCPP_INFO(this->get_logger(), "8");
         float probability = 0.5 -
                           forest->predict(tmp_mat, cv::noArray(), cv::ml::RTrees::PREDICT_SUM) /
                           forest->getRoots().size();
@@ -776,23 +793,24 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
         geometry_msgs::msg::PointStamped loc;
         loc.header = scan->header;
         tf2::Vector3 cluster_center = cluster->center();
-
+        rclcpp::Time tf_time1;
         loc.point.x = cluster_center.x();
         loc.point.y = cluster_center.y();
         loc.point.z = cluster_center.z();
+        RCLCPP_INFO(this->get_logger(), "9");
         try
         {
-            auto transform = tfl_buffer_.lookupTransform(fixed_frame, loc.header.frame_id, rclcpp::Time(0));
-            tf2::doTransform(loc, loc, transform);
+            tfl_buffer_->lookupTransform(fixed_frame, loc.header.frame_id, tf_time1, rclcpp::Duration::from_seconds(1.0));
+            tfl_buffer_->canTransform(fixed_frame, loc.header.frame_id, tf_time1);  
         }
         catch (const tf2::TransformException &ex)
         {
             RCLCPP_WARN(rclcpp::get_logger("LegDetector"), "Transform error: %s", ex.what());
         }
-
+        RCLCPP_INFO(this->get_logger(), "10");
         std::list<SavedFeature*>::iterator closest = propagated.end();
         float closest_dist = max_track_jump_m;
-
+        RCLCPP_INFO(this->get_logger(), "11");
         for (std::list<SavedFeature*>::iterator pf_iter = propagated.begin();
            pf_iter != propagated.end();
            pf_iter++)
@@ -808,18 +826,22 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
                 closest_dist = dist;
             }
         }
-
+        RCLCPP_INFO(this->get_logger(), "12");
         if (closest == propagated.end())
         {
-            saved_features_.push_back(new SavedFeature(loc, tfl_buffer_));
+            RCLCPP_INFO(this->get_logger(), "12.1");
         }
         else
         {
+            RCLCPP_INFO(this->get_logger(), "12.8");
             matches.insert(MatchedFeature(cluster, *closest, closest_dist, probability));
+            RCLCPP_INFO(this->get_logger(), "12.9");
         }
+        RCLCPP_INFO(this->get_logger(), "13");
     }
     // loop through _sorted_ matches list
     // find the match with the shortest distance for each tracker
+    RCLCPP_INFO(this->get_logger(), "%d", matches.size());
     while (matches.size() > 0)
     {
       std::multiset<MatchedFeature>::iterator matched_iter = matches.begin();
@@ -837,10 +859,11 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
           loc.point.x = matched_iter->candidate_->center().x();
           loc.point.y = matched_iter->candidate_->center().y();
           loc.point.z = matched_iter->candidate_->center().z();
+          rclcpp::Time tf_time1;
           try
           {
-            auto transform = tfl_buffer_.lookupTransform(fixed_frame, loc.header.frame_id, rclcpp::Time(0));
-            tf2::doTransform(loc, loc, transform);
+            tfl_buffer_->lookupTransform(fixed_frame, loc.header.frame_id, tf_time1, rclcpp::Duration::from_seconds(1.0));
+            tfl_buffer_->canTransform(fixed_frame, loc.header.frame_id, tf_time1);  
           }
           catch (...)
           {
@@ -873,11 +896,11 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
         loc.point.x = matched_iter->candidate_->center().x();
         loc.point.y = matched_iter->candidate_->center().y();
         loc.point.z = matched_iter->candidate_->center().z();
-
+        rclcpp::Time tf_time1;
         try
         {
-            auto transform = tfl_buffer_.lookupTransform(fixed_frame, loc.header.frame_id, rclcpp::Time(0));
-            tf2::doTransform(loc, loc, transform);
+          tfl_buffer_->lookupTransform(fixed_frame, loc.header.frame_id, tf_time1, rclcpp::Duration::from_seconds(1.0));
+          tfl_buffer_->canTransform(fixed_frame, loc.header.frame_id, tf_time1);  
         }
         catch (...)
         {
@@ -907,7 +930,7 @@ void laserCallback(const sensor_msgs::msg::LaserScan::SharedPtr scan)
         // so create a new tracker for this candidate
         if (closest == propagated.end())
           std::list<SavedFeature*>::iterator new_saved =
-            saved_features_.insert(saved_features_.end(), new SavedFeature(loc, tfl_buffer_));
+            saved_features_.insert(saved_features_.end(), new SavedFeature(loc, *tfl_buffer_));
         else
           matches.insert(MatchedFeature(matched_iter->candidate_, *closest, closest_dist, matched_iter->probability_));
         matches.erase(matched_iter);
@@ -1061,11 +1084,11 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
 
-    auto node = std::make_shared<rclcpp::Node>("leg_detector");
+    g_argc = argc;
+    g_argv = argv; 
+    auto leg_detector = std::make_shared<LegDetector>();
 
-    auto leg_detector = std::make_shared<LegDetector>(node);
-
-    rclcpp::spin(node);
+    rclcpp::spin(leg_detector);
 
     rclcpp::shutdown();
     return 0;
